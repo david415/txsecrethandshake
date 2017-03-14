@@ -57,6 +57,10 @@ def test_client_challenge():
     client_auth = client_envelope_factory.create_client_auth()
     server_envelope_factory.verify_client_auth(client_auth)
 
+    server_accept = server_envelope_factory.create_server_accept()
+    client_envelope_factory.verify_server_accept(server_accept)
+
+
 # from twisted.test import proto_helpers
 # @pytest.inlineCallbacks
 # def test_client_protocol():
