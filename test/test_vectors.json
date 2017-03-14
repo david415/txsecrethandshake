@@ -1,0 +1,13 @@
+{
+  "test1": {
+    "application_key": "22BDzn3gMPHhQtuBT7H3U7i6eG4Ud7kpt6+Ks1VAlDU=\n",
+    "client_ephemeral_priv_key": "gMitYzkqX1k0ewQ+EkTmjVLrhTkh4mVvGI0z5ZoUEHQ=",
+    "client_ephemeral_pub_key": "Vvf3lG5ip58qREDMXKRZqdGwgMWXIBTHgiMPo4z+gnc=",
+    "client_signing_priv_key": "grNzBZNxX4JQ5pjhhfxnxsW0RLJUfFgYzOVRyS7PJ6E=",  
+    "server_ephemeral_priv_key": "QHG9mkiljPdXnp+mYv4Kwqy4xu7TBWzZcP013U0CbG4=",
+    "server_ephemeral_pub_key": "MGWOsH+auCH706QQfvyvP8B+FF+bVQYGvHTYonFQV1A=",
+    "server_signing_priv_key": "V+TBNpzJTWfE2/irYh/Vo9IlmxvEdjgctiVZiGazVm8=",  
+    "client_challenge": "9eYqsbO44b6okF2XgJTk5Y33LH2SraEgw8+rXdVsZyNW9/eUbmKnnypEQMxcpFmp0bCAxZcgFMeCIw+jjP6Cdw==",
+    "client_auth": ""
+  }
+}
