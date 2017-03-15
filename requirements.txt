@@ -1,3 +1,4 @@
 Twisted>=16.6.0
 attrs>=16.3.0
 PyNaCl>=1.0.1
+cbor>=1.0.0
