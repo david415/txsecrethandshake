@@ -4,13 +4,17 @@ import types
 import zope
 import hashlib
 import binascii
+from Crypto.Util import number
 
 from nacl.public import PrivateKey, PublicKey, Box
 from nacl.signing import SigningKey, VerifyKey
 from nacl.bindings import crypto_scalarmult, crypto_box_afternm, crypto_sign_BYTES, crypto_box_open_afternm
+from nacl.secret import SecretBox
 
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes, hmac
+
+from util import is_32bytes, is_24bytes
 
 
 @attr.s
@@ -29,15 +33,6 @@ class Ed25519KeyPair(object):
     """
     private_key = attr.ib(validator=attr.validators.instance_of(SigningKey))
     public_key = attr.ib(validator=attr.validators.instance_of(VerifyKey))
-
-
-def is_32bytes(instance, attribute, value):
-    """
-    validator for node_id which should be a 32 byte value
-    """
-    if not isinstance(value, bytes) or len(value) != 32:
-        print "val is len %s" % len(value)
-        raise ValueError("must be 32 byte value")
 
 
 @attr.s
@@ -248,3 +243,60 @@ class SecretHandshakeEnvelopeFactory(object):
         message = self.application_key + self._client_auth + self._hashed_secret
         self.remote_longterm_pub_key.verify(message, signature)
 
+
+@attr.s
+class NonceCounter(object):
+    """
+    a counter for nonces.
+    """
+    initial_value = attr.ib(validator=attr.validators.instance_of(int))
+    size = attr.ib(validator=attr.validators.instance_of(int))
+    i = attr.ib(init=False, default=None)
+
+    def __attrs_post_init__(self):
+        self.i = self.initial_value
+
+    def __call__(self):
+        if self.i > 2**self.size:
+            # wrap around
+            self.i = 0
+        ii = number.long_to_bytes(self.i)
+        ii = b'\x00' * (self.size - len(ii)) + ii
+        self.i += 1
+        if self.i == self.initial_value:
+            raise Exception("NonceCounter exhausted.")
+        return ii
+
+
+@attr.s
+class BoxStream(object):
+    """
+    streaming encryption based on Dominic Tarr's pull-box-stream
+
+    https://github.com/dominictarr/pull-box-stream
+    """
+    key = attr.ib(validator=is_32bytes)
+    initial_nonce = attr.ib(validator=is_24bytes)
+    nonce1 = attr.ib(init=False, default=None)
+    nonce2 = attr.ib(init=False, default=None)
+
+    def __attrs_post_init__(self):
+        self.nonce1 = NonceCounter(self.initial_value, SecretBox.NONCE_SIZE)
+        self.nonce2 = NonceCounter(self.initial_value+1, SecretBox.NONCE_SIZE)
+        self.nonce2()
+
+    def box(self, datagram):
+        assert len(datagram) < 4096
+        payload_box = SecretBox(self.key)
+        encrypted_body = payload_box.encrypt(datagram, nonce=self.nonce2())
+
+        #header = struct.pack('>H', len(datagram)) + encrypted_body.ciphertext[:16]
+        header = format(len(datagram), '016b') + encrypted_body.ciphertext[:16]
+        header_box = SecretBox(self.key)
+        encrypted_header = header_box.encrypt(header, nonce=self.nonce1())
+        self.nonce1()
+        self.nonce2()
+        return encrypted_header.ciphertext + encrypted_body.ciphertext[16:]
+
+    def unbox(self, datagram):
+        pass
