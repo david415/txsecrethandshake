@@ -5,15 +5,21 @@ import cbor
 import types
 import zope
 
+from twisted.protocols.basic import Int32StringReceiver
+from twisted.internet.protocol import Factory
+
+from nacl.signing import VerifyKey
+
 from envelopes import SecretHandshakeEnvelopeFactory, Curve25519KeyPair, Ed25519KeyPair
+from util import is_32bytes, SingleObserver
 from interfaces import ISecretHandshakeMachine
 
 
 @attr.s
 @zope.interface.implementer(ISecretHandshakeMachine)
-class ClientMachine(object):
+class ServerMachine(object):
     """
-    I am client-side state machine that implements the "secret handshake",
+    I am server-side state machine that implements the "secret handshake",
     a cryptographic handshake protocol as described in the paper:
     Designing a Secret Handshake: Authenticated Key Exchange as a
     Capability System by Dominic Tarr
@@ -37,7 +43,7 @@ class ClientMachine(object):
     @_machine.input()
     def datagram_received(self, datagram):
         "the machine receives data"
-    
+
     # outputs
 
     @_machine.output()
@@ -50,22 +56,16 @@ class ClientMachine(object):
         self.disconnect_handler()
 
     @_machine.output()
-    def _send_client_challenge(self):
-        client_challenge = self.envelope_factory.create_client_challenge()
-        self.send_datagram_handler(client_challenge)
+    def _verify_client_challenge(self, datagram):
+        self.envelope_factory.is_client_challenge_verified(datagram)
+        envelope = self.envelope_factory.create_server_challenge()
+        self.send_datagram_handler(envelope)
 
     @_machine.output()
-    def _verify_server_challenge(self, datagram):
-        self.envelope_factory.is_server_challenge_verified(datagram)
-
-        # send client auth envelope
-        client_auth = self.envelope_factory.create_client_auth()
-        self.send_datagram_handler(client_auth)
-
-    @_machine.output()
-    def _verify_server_accept(self, datagram):
-        self.envelope_factory.verify_server_accept(datagram)
-        self.notify_connected_handler()
+    def _verify_client_auth(self, datagram):
+        self.envelope_factory.verify_client_auth(datagram)
+        envelope = self.envelope_factory.create_server_accept()
+        self.send_datagram_handler(envelope)
 
     @_machine.output()
     def _send_datagram(self, datagram):
@@ -83,23 +83,32 @@ class ClientMachine(object):
         "connection not yet initiated"
 
     @_machine.state()
-    def challenge_sent(self):
-        "challenge envelope sent"
+    def awaiting_challenge(self):
+        "awaiting challenge envelope from client"
 
     @_machine.state()
-    def client_auth_sent(self):
-        "cleint auth envelope sent"
+    def challenge_sent(self):
+        "server challenge envelope sent"
+
+    @_machine.state()
+    def server_auth_sent(self):
+        "server auth envelope sent"
+
+    @_machine.state()
+    def listen(self):
+        "start accepting connections"
 
     @_machine.state()
     def connected(self):
-        "accept envelope received"
+        "accept envelope sent"
 
     @_machine.state()
     def disconnected(self):
         "disconnected state"
 
-    unconnected.upon(start, enter=challenge_sent, outputs=[_send_client_challenge])
-    challenge_sent.upon(datagram_received, enter=client_auth_sent, outputs=[_verify_server_challenge])
-    client_auth_sent.upon(datagram_received, enter=connected, outputs=[_verify_server_accept])
+    unconnected.upon(start, enter=awaiting_challenge, outputs=[])
+    awaiting_challenge.upon(datagram_received, enter=challenge_sent, outputs=[_verify_client_challenge])
+    challenge_sent.upon(datagram_received, enter=connected, outputs=[_verify_client_auth])
     connected.upon(datagram_received, enter=connected, outputs=[_send_datagram])
     connected.upon(stop, enter=disconnected, outputs=[_send_disconnect])
+

@@ -7,7 +7,7 @@ from nacl.signing import SigningKey, VerifyKey
 from twisted.test import proto_helpers
 
 from txsecrethandshake.envelopes import Curve25519KeyPair, Ed25519KeyPair, SecretHandshakeEnvelopeFactory
-from txsecrethandshake.client import SecretHandshakeClientFactory
+from txsecrethandshake.protocol import SecretHandshakeClientFactory, SecretHandshakeServerFactory, SecretHandshakeProtocol
 
 
 def get_test_vectors():
@@ -71,37 +71,57 @@ def test_client_protocol():
     """
     vectors = get_test_vectors()
     application_key = bytes(binascii.a2b_base64(vectors['test1']['application_key']))
-    local_ephemeral_key = Curve25519KeyPair(
+
+
+    client_ephemeral_key = Curve25519KeyPair(
         PrivateKey(binascii.a2b_base64(vectors['test1']['client_ephemeral_priv_key'])),
         PublicKey(binascii.a2b_base64(vectors['test1']['client_ephemeral_pub_key']))
         )
     client_signing_private_key = SigningKey(binascii.a2b_base64(vectors['test1']['client_signing_priv_key']))
-    local_signing_key = Ed25519KeyPair(
+    client_signing_key = Ed25519KeyPair(
         client_signing_private_key,
         client_signing_private_key.verify_key
         )
+
+    server_ephemeral_key = Curve25519KeyPair(
+        PrivateKey(binascii.a2b_base64(vectors['test1']['server_ephemeral_priv_key'])),
+        PublicKey(binascii.a2b_base64(vectors['test1']['server_ephemeral_pub_key']))
+        )
     server_signing_private_key = SigningKey(binascii.a2b_base64(vectors['test1']['server_signing_priv_key']))
-    remote_longterm_key = Ed25519KeyPair(
+    server_signing_key = Ed25519KeyPair(
         server_signing_private_key,
         server_signing_private_key.verify_key
         )
 
     client_factory = SecretHandshakeClientFactory(
         application_key,
-        local_ephemeral_key,
-        local_signing_key,
-        remote_longterm_key.public_key
+        client_ephemeral_key,
+        client_signing_key,
+        server_signing_key.public_key
     )
-    protocol = client_factory.buildProtocol(None)
-    transport = proto_helpers.StringTransport()
+    client_protocol = client_factory.buildProtocol(None)
+    client_transport = proto_helpers.StringTransport()
 
-    protocol.makeConnection(transport)
-    assert len(transport.value()) == 68
-    transport.clear()
-
-    #protocol.dataReceived(b"handshake vector2")
-    #assert transport.value() == b"handshake vector3"
-    #transport.clear()
+    server_factory = SecretHandshakeServerFactory(
+        application_key,
+        server_ephemeral_key,
+        server_signing_key,
+        client_signing_key.public_key
+    )
+    server_protocol = server_factory.buildProtocol(None)
+    server_transport = proto_helpers.StringTransport()
     
-    #yield protocol.when_done()
-    yield
+    client_protocol.makeConnection(client_transport)
+    server_protocol.makeConnection(server_transport)
+    assert len(client_transport.value()) == 68
+
+    server_protocol.dataReceived(client_transport.value())
+    client_transport.clear()
+    client_protocol.dataReceived(server_transport.value())
+    server_transport.clear()
+    server_protocol.dataReceived(client_transport.value())
+    client_transport.clear()
+    client_protocol.dataReceived(server_transport.value())
+
+    yield client_protocol.when_connected()
+    yield server_protocol.when_connected()
