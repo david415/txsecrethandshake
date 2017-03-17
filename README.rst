@@ -19,6 +19,7 @@ dependencies
 - twisted
 - pynacl
 - attrs
+- automat
 
 
 license

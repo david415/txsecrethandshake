@@ -18,13 +18,18 @@ def create_handshake_protocol(application_key, local_ephemeral_key, local_signin
         local_signing_key,
         remote_longterm_pub_key,
     )
-    client_protocol = SecretHandshakeProtocol()
-    send_datagram_handler = lambda datagram: client_protocol._on_data(datagram)
-    disconnect_handler = lambda: client_protocol._on_disconnect()
-    notify_connected_handler = lambda: client_protocol.notify_connected()
-    machine = machine_class(envelope_factory, notify_connected_handler, send_datagram_handler, disconnect_handler)
-    client_protocol.register_machine(machine)
-    return client_protocol
+    protocol = SecretHandshakeProtocol()
+    send_datagram_handler = lambda datagram: protocol._on_data(datagram)
+    receive_message_handler = lambda message: protocol.messageReceived(message)
+    disconnect_handler = lambda: protocol._on_disconnect()
+    notify_connected_handler = lambda: protocol.notify_connected()
+    machine = machine_class(envelope_factory,
+                            notify_connected_handler,
+                            send_datagram_handler,
+                            receive_message_handler,
+                            disconnect_handler)
+    protocol.register_machine(machine)
+    return protocol
 
 
 def create_client_handshake_protocol(application_key, local_ephemeral_key, local_signing_key, remote_longterm_pub_key):
@@ -117,3 +122,16 @@ class SecretHandshakeProtocol(Int32StringReceiver, object):
 
     def _on_disconnect(self):
         self.transport.loseConnection()
+
+    def messageSend(self, message):
+        """
+        given a plaintext message, the message is
+        encrypted and sent over the cryptographic channel
+        """
+        self._machine.send(message)
+
+    def messageReceived(self, message):
+        """
+        override this function to handle incoming decrypted messages
+        from the remote peer
+        """

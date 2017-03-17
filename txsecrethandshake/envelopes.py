@@ -52,6 +52,21 @@ class SecretHandshakeEnvelopeFactory(object):
     _remote_app_mac = attr.ib(init=False, validator=is_32bytes)
     _secret = attr.ib(init=False, validator=is_32bytes)
     _hashed_secret = attr.ib(init=False, validator=is_32bytes)
+    _shared_secret = attr.ib(init=False)
+
+    def __attrs_post_init__(self):
+        nonce = bytes(b"\x00" * 24)
+        upstream_secret = hashlib.sha256(bytes(self._shared_secret) +
+                                         bytes(self._remote_ephemeral_pub_key)).digest()
+        downstream_secret = hashlib.sha256(bytes(self._shared_secret) +
+                                           bytes(self.local_ephemeral_key.public_key)).digest()
+        if sorted([bytes(self._remote_ephemeral_pub_key),
+                   bytes(self.local_ephemeral_key.public_key)])[0] == bytes(self._remote_ephemeral_pub_key):
+            self.upstream_box = BoxStream(upstream_secret, nonce)
+            self.downstream_box = BoxStream(downstream_secret, nonce)
+        else:
+            self.downstream_box = BoxStream(upstream_secret, nonce)
+            self.upstream_box = BoxStream(downstream_secret, nonce)
 
     def create_client_challenge(self):
         """
@@ -219,6 +234,7 @@ class SecretHandshakeEnvelopeFactory(object):
         hasher = hashlib.sha256()
         hasher.update(to_hash)
         box_secret = hasher.digest()
+        self._shared_secret = box_secret
         nonce = b"\x00" * 24
         return crypto_box_afternm(message_to_box, nonce, box_secret)
 
@@ -238,10 +254,17 @@ class SecretHandshakeEnvelopeFactory(object):
         hasher = hashlib.sha256()
         hasher.update(to_hash)
         box_secret = hasher.digest()
+        self._shared_secret = box_secret
         nonce = b"\x00" * 24
         signature = crypto_box_open_afternm(server_accept_envelope, nonce, box_secret)
         message = self.application_key + self._client_auth + self._hashed_secret
         self.remote_longterm_pub_key.verify(message, signature)
+
+    def datagram_encrypt(self, datagram):
+        return self.upstream_box.encrypt(datagram)
+
+    def datagram_decrypt(self, datagram):
+        return self.downstream_box.decrypt(datagram)
 
 
 @attr.s
@@ -249,14 +272,17 @@ class NonceCounter(object):
     """
     a counter for nonces.
     """
-    initial_value = attr.ib(validator=attr.validators.instance_of(int))
+    initial_value = attr.ib(validator=is_24bytes)
     size = attr.ib(validator=attr.validators.instance_of(int))
     i = attr.ib(init=False, default=None)
 
     def __attrs_post_init__(self):
-        self.i = self.initial_value
+        self.i = number.bytes_to_long(self.initial_value)
 
     def __call__(self):
+        """
+        increment and return previous value
+        """
         if self.i > 2**self.size:
             # wrap around
             self.i = 0
@@ -271,32 +297,31 @@ class NonceCounter(object):
 @attr.s
 class BoxStream(object):
     """
-    streaming encryption based on Dominic Tarr's pull-box-stream
-
-    https://github.com/dominictarr/pull-box-stream
+    i am a helper class for boxing datagrams in a unidirectional stream
     """
     key = attr.ib(validator=is_32bytes)
     initial_nonce = attr.ib(validator=is_24bytes)
-    nonce1 = attr.ib(init=False, default=None)
-    nonce2 = attr.ib(init=False, default=None)
+
+    nonce = attr.ib(init=False, default=None)
+
+    MAX_LEN = 4096
 
     def __attrs_post_init__(self):
-        self.nonce1 = NonceCounter(self.initial_value, SecretBox.NONCE_SIZE)
-        self.nonce2 = NonceCounter(self.initial_value+1, SecretBox.NONCE_SIZE)
-        self.nonce2()
+        self.nonce = NonceCounter(self.initial_nonce, int(SecretBox.NONCE_SIZE))
+        self.box = SecretBox(self.key)
 
-    def box(self, datagram):
-        assert len(datagram) < 4096
-        payload_box = SecretBox(self.key)
-        encrypted_body = payload_box.encrypt(datagram, nonce=self.nonce2())
+    def encrypt(self, datagram):
+        """
+        SecretBox-encrypt the datagram and return ciphertext
+        """
+        assert len(datagram) < self.MAX_LEN
+        encrypted_body = self.box.encrypt(datagram, nonce=self.nonce())
+        return encrypted_body.ciphertext
 
-        #header = struct.pack('>H', len(datagram)) + encrypted_body.ciphertext[:16]
-        header = format(len(datagram), '016b') + encrypted_body.ciphertext[:16]
-        header_box = SecretBox(self.key)
-        encrypted_header = header_box.encrypt(header, nonce=self.nonce1())
-        self.nonce1()
-        self.nonce2()
-        return encrypted_header.ciphertext + encrypted_body.ciphertext[16:]
-
-    def unbox(self, datagram):
-        pass
+    def decrypt(self, datagram):
+        """
+        given SecretBox`ed ciphertext, decrypt and return plaintext
+        """
+        assert len(datagram) < self.MAX_LEN
+        payload = self.box.decrypt(datagram, nonce=self.nonce())
+        return payload

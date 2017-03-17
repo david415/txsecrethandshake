@@ -122,6 +122,55 @@ def test_client_protocol():
     server_protocol.dataReceived(client_transport.value())
     client_transport.clear()
     client_protocol.dataReceived(server_transport.value())
+    server_transport.clear()
 
     yield client_protocol.when_connected()
     yield server_protocol.when_connected()
+
+    server_transport.clear()
+    client_transport.clear()
+
+    client_protocol.messageSend("Alice was not a bit hurt, and she \
+jumped up on to her feet in a moment: she looked up, but it was all \
+dark overhead; before her was another long passage, and the White \
+Rabbit was still in sight, hurrying down it.  There was not a moment \
+to be lost: away went Alice like the wind, and was just in time to \
+hear it say, as it turned a corner, 'Oh my ears and whiskers, how late \
+it's getting!' She was close behind it when she turned the corner, but \
+the Rabbit was no longer to be seen: she found herself in a long, low \
+hall, which was lit up by a row of lamps hanging from the roof.")
+    server_protocol.dataReceived(client_transport.value())
+    client_transport.clear()
+
+    server_protocol.messageSend("There were doors all round the hall, \
+but they were all locked; and when Alice had been all the way down \
+one side and up the other, trying every door, she walked sadly down \
+the middle, wondering how she was ever to get out again.")
+    client_protocol.dataReceived(server_transport.value())
+    server_transport.clear()
+
+    client_protocol.messageSend("Suddenly she came upon a little \
+three-legged table, all made of solid glass; there was nothing on it \
+except a tiny golden key, and Alice's first thought was that it might \
+belong to one of the doors of the hall; but, alas! either the locks \
+were too large, or the key was too small, but at any rate it would not \
+open any of them. However, on the second time round, she came upon a \
+low curtain she had not noticed before, and behind it was a little \
+door about fifteen inches high: she tried the little golden key in the \
+lock, and to her great delight it fitted!")
+    server_protocol.dataReceived(client_transport.value())
+    client_transport.clear()
+
+    server_protocol.messageSend("Alice opened the door and found that \
+it led into a small passage, not much larger than a rat-hole: she \
+knelt down and looked along the passage into the loveliest garden you \
+ever saw. How she longed to get out of that dark hall, and wander \
+about among those beds of bright flowers and those cool fountains, but \
+she could not even get her head through the doorway; 'and even if my \
+head would go through,' thought poor Alice, 'it would be of very \
+little use without my shoulders. Oh, how I wish I could shut up like a \
+telescope! I think I could, if I only knew how to begin.' For, you \
+see, so many out-of-the-way things had happened lately, that Alice had \
+begun to think that very few things indeed were really impossible.")
+    client_protocol.dataReceived(server_transport.value())
+    server_transport.clear()

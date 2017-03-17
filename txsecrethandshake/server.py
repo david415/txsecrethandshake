@@ -28,6 +28,7 @@ class ServerMachine(object):
     envelope_factory = attr.ib(validator=attr.validators.instance_of(SecretHandshakeEnvelopeFactory))
     notify_connected_handler = attr.ib(validator=attr.validators.instance_of(types.FunctionType))
     send_datagram_handler = attr.ib(validator=attr.validators.instance_of(types.FunctionType))
+    receive_message_handler = attr.ib(validator=attr.validators.instance_of(types.FunctionType))
     disconnect_handler = attr.ib(validator=attr.validators.instance_of(types.FunctionType))
 
     # inputs
@@ -43,6 +44,10 @@ class ServerMachine(object):
     @_machine.input()
     def datagram_received(self, datagram):
         "the machine receives data"
+
+    @_machine.input()
+    def send(self, datagram):
+        "send a datagram"
 
     # outputs
 
@@ -69,12 +74,31 @@ class ServerMachine(object):
 
     @_machine.output()
     def _send_datagram(self, datagram):
+        """
+        send datagram, first serialize, then encrypt and finally pass
+        to our send datagram handler.
+        """
         datagram_message = {
             "type": "datagram",
             "payload": datagram
             }
-        datagram_envelope = self.envelope_factory.datagram_encrypt(cbor.dumps(datagram_message))
+        datagram_envelope = self.envelope_factory.downstream_box.encrypt(cbor.dumps(datagram_message))
         self.send_datagram_handler(datagram_envelope)
+
+    @_machine.output()
+    def _receive_datagram(self, datagram):
+        """
+        post-handshake: decrypt received datagrams, deserialize and
+        then forward datagram payload upstream if message type is
+        "datagram", if type is "disconnect" then call our disconnect
+        handler.
+        """
+        serialized_message = self.envelope_factory.downstream_box.decrypt(datagram)
+        message = cbor.loads(serialized_message)
+        if message["type"] == "datagram":
+            self.receive_message_handler(message["payload"])
+        if message["type"] == "disconnect":
+            self.disconnect_handler()
 
     # states
 
@@ -91,14 +115,6 @@ class ServerMachine(object):
         "server challenge envelope sent"
 
     @_machine.state()
-    def server_auth_sent(self):
-        "server auth envelope sent"
-
-    @_machine.state()
-    def listen(self):
-        "start accepting connections"
-
-    @_machine.state()
     def connected(self):
         "accept envelope sent"
 
@@ -109,6 +125,7 @@ class ServerMachine(object):
     unconnected.upon(start, enter=awaiting_challenge, outputs=[])
     awaiting_challenge.upon(datagram_received, enter=challenge_sent, outputs=[_verify_client_challenge])
     challenge_sent.upon(datagram_received, enter=connected, outputs=[_verify_client_auth])
-    connected.upon(datagram_received, enter=connected, outputs=[_send_datagram])
+    connected.upon(datagram_received, enter=connected, outputs=[_receive_datagram])
+    connected.upon(send, enter=connected, outputs=[_send_datagram])
     connected.upon(stop, enter=disconnected, outputs=[_send_disconnect])
 
