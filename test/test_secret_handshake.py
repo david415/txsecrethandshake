@@ -106,7 +106,6 @@ def test_client_protocol():
         application_key,
         server_ephemeral_key,
         server_signing_key,
-        client_signing_key.public_key
     )
     server_protocol = server_factory.buildProtocol(None)
     server_transport = proto_helpers.StringTransport()
