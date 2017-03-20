@@ -11,7 +11,11 @@ from client import ClientMachine
 from server import ServerMachine
 
 
-def create_handshake_protocol(application_key, local_ephemeral_key, local_signing_key, remote_longterm_pub_key, machine_class):
+def create_handshake_protocol(machine_class,
+                              application_key,
+                              local_ephemeral_key,
+                              local_signing_key,
+                              remote_longterm_pub_key=None):
     envelope_factory = SecretHandshakeEnvelopeFactory(
         application_key,
         local_ephemeral_key,
@@ -35,20 +39,20 @@ def create_handshake_protocol(application_key, local_ephemeral_key, local_signin
 def create_client_handshake_protocol(application_key, local_ephemeral_key, local_signing_key, remote_longterm_pub_key):
     machine_class = ClientMachine
     return create_handshake_protocol(
+        machine_class,
         application_key,
         local_ephemeral_key,
         local_signing_key,
-        remote_longterm_pub_key,
-        machine_class)
+        remote_longterm_pub_key)
 
-def create_server_handshake_protocol(application_key, local_ephemeral_key, local_signing_key, remote_longterm_pub_key):
+
+def create_server_handshake_protocol(application_key, local_ephemeral_key, local_signing_key):
     machine_class = ServerMachine
     return create_handshake_protocol(
+        machine_class,
         application_key,
         local_ephemeral_key,
-        local_signing_key,
-        remote_longterm_pub_key,
-        machine_class)
+        local_signing_key)
 
 
 @attr.s
@@ -73,14 +77,14 @@ class SecretHandshakeServerFactory(object, Factory):
     application_key = attr.ib(validator=is_32bytes)
     local_ephemeral_key = attr.ib(validator=attr.validators.instance_of(Curve25519KeyPair))
     local_signing_key = attr.ib(validator=attr.validators.instance_of(Ed25519KeyPair))
-    remote_longterm_pub_key = attr.ib(validator=attr.validators.instance_of(VerifyKey))
+
+    remote_longterm_pub_key = attr.ib(init=False)
 
     def buildProtocol(self, addr):
         return create_server_handshake_protocol(
             self.application_key,
             self.local_ephemeral_key,
-            self.local_signing_key,
-            self.remote_longterm_pub_key)
+            self.local_signing_key)
 
 
 @attr.s

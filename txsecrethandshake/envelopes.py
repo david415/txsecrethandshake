@@ -14,7 +14,7 @@ from nacl.secret import SecretBox
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes, hmac
 
-from util import is_32bytes, is_24bytes
+from util import is_32bytes, is_24bytes, is_VerifyKeyOrNone
 
 
 @attr.s
@@ -46,7 +46,7 @@ class SecretHandshakeEnvelopeFactory(object):
     application_key = attr.ib(validator=is_32bytes)
     local_ephemeral_key = attr.ib(validator=attr.validators.instance_of(Curve25519KeyPair))
     local_signing_key = attr.ib(validator=attr.validators.instance_of(Ed25519KeyPair))
-    remote_longterm_pub_key = attr.ib(validator=attr.validators.instance_of(VerifyKey))
+    remote_longterm_pub_key = attr.ib(validator=is_VerifyKeyOrNone)
 
     _remote_ephemeral_pub_key = attr.ib(init=False, validator=attr.validators.instance_of(PublicKey))
     _remote_app_mac = attr.ib(init=False, validator=is_32bytes)
@@ -195,7 +195,7 @@ class SecretHandshakeEnvelopeFactory(object):
         nonce = b"\x00" * 24
         message = crypto_box_open_afternm(client_auth, nonce, box_secret)
         self._client_vouch = message
-        remote_longterm_pub_key = message[:32]
+        self.remote_longterm_pub_key = VerifyKey(message[:32])
         signature = message[32:]
 
         hasher = hashlib.sha256()
