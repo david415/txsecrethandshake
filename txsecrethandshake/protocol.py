@@ -1,7 +1,7 @@
 
 import attr
 from twisted.protocols.basic import Int32StringReceiver
-from twisted.internet.protocol import Factory
+from twisted.internet.protocol import Protocol, Factory
 from nacl.signing import VerifyKey
 
 from interfaces import ISecretHandshakeMachine
@@ -85,6 +85,37 @@ class SecretHandshakeServerFactory(object, Factory):
             self.application_key,
             self.local_ephemeral_key,
             self.local_signing_key)
+
+
+@attr.s
+class TwoPhaseProtocol(Protocol, object):
+    """
+    combine two protocols into one protocol with two phases.
+    """
+
+    handshake_protocol = attr.ib(validator=attr.validators.instance_of(Protocol))
+    session_protocol = attr.ib(validator=attr.validators.instance_of(Protocol))
+
+    _proxy_protocol = attr.ib(init=False, default=None)
+
+
+    def set_protocol(self, protocol):
+        self._proxy_protocol = protocol
+        self._proxy_protocol.transport = self.transport
+        self._proxy_protocol.connectionMade()
+
+    def connectionMade(self):
+        self.set_protocol(self.handshake_protocol)
+
+    def handshake_done(self):
+        self.set_protocol(self.session_protocol)
+
+    def connectionLost(self, reason):
+        # XXX todo: do something clever with the error message
+        pass
+
+    def dataReceived(self, data):
+        self._proxy_protocol.dataReceived(data)
 
 
 @attr.s
